@@ -1,21 +1,21 @@
 # EBS Unattached Volume Scanner & Cleaner (Safe by Default)
 
-This script lists EBS volumes that are **not attached to any instance** (i.e., volumes in `available` state) and prints their **VolumeId and ARN**.
-Optionally, it can delete those volumes — with **DryRun enabled by default** to prevent accidental deletions.
+This script shows **ALL EBS volumes** (attached and unattached) with full details and can delete unattached volumes.
 
 ## What it does
 
 ✅ Uses the **default AWS credential chain** (no credentials hardcoded).
 ✅ Scans **one region at a time**.
-✅ Finds EBS volumes that are **unattached** (`State = available`).
+✅ Shows **ALL EBS volumes** (attached and unattached) with full details.
 ✅ Prints each volume:
 - VolumeId (e.g., `vol-0123456789abcdef0`)
 - ARN (e.g., `arn:aws:ec2:us-east-1:123456789012:volume/vol-...`)
-- Size, Type, AZ, Name tag (if present)
+- Size, Type, AZ, State, Name tag (if present)
+- For attached volumes: shows attached instance ID
 
 ✅ Two modes of operation:
-- **With `--dry-run`:** Lists volumes only (NO deletion)
-- **Without `--dry-run`:** Lists and DELETES all unattached volumes
+- **With `--dry-run`:** Lists all volumes (NO deletion)
+- **Without `--dry-run`:** Lists all volumes AND deletes unattached ones
 - Re-checks each volume is still unattached immediately before delete
 
 ## Requirements
@@ -79,25 +79,14 @@ python ebs_check.py --region us-east-1 --dry-run --verbose
 
 Example verbose output:
 ```
-Scanning all EBS volumes in us-east-1 (account 123456789012)...
-Total EBS volumes found: 15
-Unattached volumes: 3
-Attached volumes: 12
+Attached EBS volumes in us-east-1 (account 123456789012):
+- vol-12345678  arn:aws:ec2:us-east-1:123456789012:volume/vol-12345678 Size=20GiB Type=gp3 AZ=us-east-1a State=in-use (attached to i-1234567890abcdef0) Name='web-server-data'
+- vol-87654321  arn:aws:ec2:us-east-1:123456789012:volume/vol-87654321 Size=50GiB Type=io1 AZ=us-east-1b State=in-use (attached to i-0987654321fedcba0) Name='database-storage'
 
-Attached volumes:
-  - vol-12345678: 20GiB gp3 in us-east-1a, State=in-use (attached to i-1234567890abcdef0)
-    Name: web-server-data
-  - vol-87654321: 50GiB io1 in us-east-1b, State=in-use (attached to i-0987654321fedcba0)
-    Name: database-storage
-  [...]
-
-==================================================
 Unattached EBS volumes in us-east-1 (account 123456789012):
 - vol-abcdef12  arn:aws:ec2:us-east-1:123456789012:volume/vol-abcdef12 Size=8GiB Type=gp3 AZ=us-east-1a Name='old-test-volume'
-[...]
 
---dry-run mode: 3 volume(s) listed above (NOT deleted)
-Summary: Found 3 unattached volume(s) ready for cleanup
+--dry-run mode: 1 volume(s) listed above (NOT deleted)
 ```
 
 ### 3) Output as JSON
