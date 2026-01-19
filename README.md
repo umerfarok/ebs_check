@@ -1,17 +1,20 @@
 # EBS Unattached Volume Scanner & Cleaner (Safe by Default)
 
-This script shows **ALL EBS volumes** (attached and unattached) with full details and can delete unattached volumes.
+This script shows comprehensive details for ALL EBS volumes (attached and unattached) and can delete unattached volumes.
 
 ## What it does
 
 ✅ Uses the **default AWS credential chain** (no credentials hardcoded).
 ✅ Scans **one region at a time**.
-✅ Shows **ALL EBS volumes** (attached and unattached) with full details.
-✅ Prints each volume:
-- VolumeId (e.g., `vol-0123456789abcdef0`)
-- ARN (e.g., `arn:aws:ec2:us-east-1:123456789012:volume/vol-...`)
-- Size, Type, AZ, State, Name tag (if present)
-- For attached volumes: shows attached instance ID
+✅ Shows **ALL EBS volumes** (attached and unattached) with comprehensive details.
+✅ Displays complete volume information including:
+- Volume ID and ARN
+- Name, Size, Type, Availability Zone
+- State, Creation Time, IOPS, Throughput
+- Encryption status, Multi-Attach capability
+- All tags (not just Name)
+- For attached volumes: Instance ID, Device name, Attachment state
+- For unattached volumes: Ready for cleanup status
 
 ✅ Two modes of operation:
 - **With `--dry-run`:** Lists all volumes (NO deletion)
@@ -61,30 +64,58 @@ To delete volumes:
 
 ## Usage
 
-### 1) List unattached volumes with --dry-run (safe, list-only)
+### 1) List all volumes with --dry-run (safe, list-only)
 
-Specify region and use --dry-run to list without deleting:
+Shows all EBS volumes (attached and unattached) without deleting anything:
 
 ```bash
 python ebs_check.py --region us-east-1 --dry-run
 ```
 
-### 2) Verbose logging with --verbose
-
-Show detailed information about ALL volumes (both attached and unattached):
-
-```bash
-python ebs_check.py --region us-east-1 --dry-run --verbose
-```
-
-Example verbose output:
+Example output:
 ```
 Attached EBS volumes in us-east-1 (account 123456789012):
-- vol-12345678  arn:aws:ec2:us-east-1:123456789012:volume/vol-12345678 Size=20GiB Type=gp3 AZ=us-east-1a State=in-use (attached to i-1234567890abcdef0) Name='web-server-data'
-- vol-87654321  arn:aws:ec2:us-east-1:123456789012:volume/vol-87654321 Size=50GiB Type=io1 AZ=us-east-1b State=in-use (attached to i-0987654321fedcba0) Name='database-storage'
+- Volume Details:
+  Volume ID: vol-12345678
+  ARN: arn:aws:ec2:us-east-1:123456789012:volume/vol-12345678
+  Name: web-server-data
+  Size: 20 GiB
+  Type: gp3
+  Availability Zone: us-east-1a
+  State: in-use
+  Created: 2024-01-15 10:30:45.123000+00:00
+  IOPS: 3000
+  Throughput: 125 MiB/s
+  Encrypted: False
+  Multi-Attach: False
+  Attachments:
+    - Instance: i-1234567890abcdef0, Device: /dev/sda1, State: attached
+  Tags:
+    - Name: web-server-data
+    - Environment: production
+    - Team: web-team
+
+================================================================================
 
 Unattached EBS volumes in us-east-1 (account 123456789012):
-- vol-abcdef12  arn:aws:ec2:us-east-1:123456789012:volume/vol-abcdef12 Size=8GiB Type=gp3 AZ=us-east-1a Name='old-test-volume'
+- Volume Details:
+  Volume ID: vol-abcdef12
+  ARN: arn:aws:ec2:us-east-1:123456789012:volume/vol-abcdef12
+  Name: old-test-volume
+  Size: 8 GiB
+  Type: gp3
+  Availability Zone: us-east-1a
+  State: available
+  Created: 2024-01-10 14:20:30.456000+00:00
+  IOPS: 3000
+  Throughput: 125 MiB/s
+  Encrypted: False
+  Multi-Attach: False
+  Tags:
+    - Name: old-test-volume
+    - Purpose: testing
+
+Summary: Found 1 unattached volume(s) ready for cleanup
 
 --dry-run mode: 1 volume(s) listed above (NOT deleted)
 ```

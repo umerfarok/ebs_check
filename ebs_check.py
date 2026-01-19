@@ -38,6 +38,77 @@ def volume_arn(partition: str, region: str, account_id: str, volume_id: str) -> 
     return f"arn:{partition}:ec2:{region}:{account_id}:volume/{volume_id}"
 
 
+def format_volume_details(volume: Dict, partition: str, region: str, account_id: str) -> str:
+    """Format comprehensive volume details for display."""
+    vid = volume["VolumeId"]
+    arn = volume_arn(partition, region, account_id, vid)
+
+    # Basic info
+    size = volume.get("Size", "unknown")
+    vtype = volume.get("VolumeType", "unknown")
+    az = volume.get("AvailabilityZone", "unknown")
+    state = volume.get("State", "unknown")
+    create_time = volume.get("CreateTime", "unknown")
+
+    # Performance specs
+    iops = volume.get("Iops", "N/A")
+    throughput = volume.get("Throughput", "N/A")
+
+    # Other attributes
+    encrypted = volume.get("Encrypted", False)
+    multi_attach = volume.get("MultiAttachEnabled", False)
+    snapshot_id = volume.get("SnapshotId", "")
+
+    # Tags
+    tags = {t["Key"]: t["Value"] for t in volume.get("Tags", [])} if volume.get("Tags") else {}
+    name = tags.get("Name", "")
+
+    # Attachments
+    attachments = volume.get("Attachments", [])
+    attachment_details = []
+    if attachments:
+        for att in attachments:
+            instance_id = att.get("InstanceId", "unknown")
+            device = att.get("Device", "unknown")
+            attach_time = att.get("AttachTime", "unknown")
+            state = att.get("State", "unknown")
+            attachment_details.append(f"Instance: {instance_id}, Device: {device}, State: {state}")
+
+    # Build the output
+    lines = []
+    lines.append(f"Volume ID: {vid}")
+    lines.append(f"ARN: {arn}")
+    lines.append(f"Name: {name or 'N/A'}")
+    lines.append(f"Size: {size} GiB")
+    lines.append(f"Type: {vtype}")
+    lines.append(f"Availability Zone: {az}")
+    lines.append(f"State: {state}")
+    lines.append(f"Created: {create_time}")
+
+    if iops != "N/A":
+        lines.append(f"IOPS: {iops}")
+    if throughput != "N/A":
+        lines.append(f"Throughput: {throughput} MiB/s")
+
+    lines.append(f"Encrypted: {encrypted}")
+    lines.append(f"Multi-Attach: {multi_attach}")
+    if snapshot_id:
+        lines.append(f"Snapshot ID: {snapshot_id}")
+
+    if attachment_details:
+        lines.append("Attachments:")
+        for detail in attachment_details:
+            lines.append(f"  - {detail}")
+
+    # Show all tags
+    if tags:
+        lines.append("Tags:")
+        for key, value in tags.items():
+            lines.append(f"  - {key}: {value}")
+
+    return "\n".join(f"  {line}" for line in lines)
+
+
 def describe_all_volumes(ec2) -> List[Dict]:
     """Get all EBS volumes in the region."""
     paginator = ec2.get_paginator("describe_volumes")
@@ -125,26 +196,11 @@ def main() -> int:
     if attached_volumes:
         print(f"Attached EBS volumes in {region} (account {account_id}):")
         for v in attached_volumes:
-            vid = v["VolumeId"]
-            size = v.get("Size", 0)
-            vtype = v.get("VolumeType", "unknown")
-            state = v.get("State", "unknown")
-            az = v.get("AvailabilityZone", "unknown")
-            tags = {t["Key"]: t["Value"] for t in v.get("Tags", [])} if v.get("Tags") else {}
-            name = tags.get("Name", "")
+            print(f"- Volume Details:")
+            print(format_volume_details(v, partition, region, account_id))
+            print()
 
-            attachment_info = ""
-            if v.get("Attachments"):
-                att = v["Attachments"][0]
-                instance_id = att.get("InstanceId", "unknown")
-                attachment_info = f" (attached to {instance_id})"
-
-            extra = f" Size={size}GiB Type={vtype} AZ={az} State={state}{attachment_info}"
-            if name:
-                extra += f" Name={name!r}"
-            print(f"- {vid}  {volume_arn(partition, region, account_id, vid)}{extra}")
-
-        print()
+        print("=" * 80)
 
     vols = unattached_volumes
 
@@ -177,11 +233,12 @@ def main() -> int:
     else:
         if rows:
             print(f"Unattached EBS volumes in {region} (account {account_id}):")
-            for r in rows:
-                extra = f" Size={r['SizeGiB']}GiB Type={r['Type']} AZ={r['AZ']}"
-                if r["NameTag"]:
-                    extra += f" Name={r['NameTag']!r}"
-                print(f"- {r['VolumeId']}  {r['Arn']}{extra}")
+            for v in vols:
+                print(f"- Volume Details:")
+                print(format_volume_details(v, partition, region, account_id))
+                print()
+
+        print(f"Summary: Found {len(rows)} unattached volume(s) ready for cleanup")
 
     # Deletion logic
     if args.dry_run:
