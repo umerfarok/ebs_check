@@ -69,18 +69,54 @@ Specify region and use --dry-run to list without deleting:
 python ebs_check.py --region us-east-1 --dry-run
 ```
 
-### 2) Output as JSON
+### 2) Verbose logging with --verbose
+
+Show detailed information about ALL volumes (both attached and unattached):
+
+```bash
+python ebs_check.py --region us-east-1 --dry-run --verbose
+```
+
+Example verbose output:
+```
+Scanning all EBS volumes in us-east-1 (account 123456789012)...
+Total EBS volumes found: 15
+Unattached volumes: 3
+Attached volumes: 12
+
+Attached volumes:
+  - vol-12345678: 20GiB gp3 in us-east-1a, State=in-use (attached to i-1234567890abcdef0)
+    Name: web-server-data
+  - vol-87654321: 50GiB io1 in us-east-1b, State=in-use (attached to i-0987654321fedcba0)
+    Name: database-storage
+  [...]
+
+==================================================
+Unattached EBS volumes in us-east-1 (account 123456789012):
+- vol-abcdef12  arn:aws:ec2:us-east-1:123456789012:volume/vol-abcdef12 Size=8GiB Type=gp3 AZ=us-east-1a Name='old-test-volume'
+[...]
+
+--dry-run mode: 3 volume(s) listed above (NOT deleted)
+Summary: Found 3 unattached volume(s) ready for cleanup
+```
+
+### 3) Output as JSON
 
 ```bash
 python ebs_check.py --region us-east-1 --dry-run --output json
 ```
 
-### 3) Delete unattached volumes (without --dry-run)
+### 4) Delete unattached volumes (without --dry-run)
 
 **WARNING:** This will ACTUALLY DELETE volumes. Be careful!
 
 ```bash
 python ebs_check.py --region us-east-1
+```
+
+With verbose mode:
+```bash
+python ebs_check.py --region us-east-1 --verbose
 ```
 
 ## Safety Guarantees

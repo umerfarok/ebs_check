@@ -6,6 +6,9 @@ Usage:
   # List unattached volumes (with --dry-run, no deletion)
   python ebs_check.py --region us-east-1 --dry-run
 
+  # List with verbose logging (shows all volumes: attached + unattached)
+  python ebs_check.py --region us-east-1 --dry-run --verbose
+
   # Delete unattached volumes (without --dry-run)
   python ebs_check.py --region us-east-1
 
@@ -34,6 +37,17 @@ def get_identity(session) -> Tuple[str, str]:
 
 def volume_arn(partition: str, region: str, account_id: str, volume_id: str) -> str:
     return f"arn:{partition}:ec2:{region}:{account_id}:volume/{volume_id}"
+
+
+def describe_all_volumes(ec2) -> List[Dict]:
+    """Get all EBS volumes in the region."""
+    paginator = ec2.get_paginator("describe_volumes")
+    pages = paginator.paginate()
+
+    vols = []
+    for page in pages:
+        vols.extend(page.get("Volumes", []))
+    return vols
 
 
 def describe_unattached_volumes(ec2) -> List[Dict]:
@@ -71,13 +85,18 @@ def delete_volume(ec2, volume_id: str) -> Tuple[bool, str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="List/delete unattached EBS volumes. Use --dry-run to only list without deleting."
+        description="List/delete unattached EBS volumes. Use --dry-run to only list without deleting. Use --verbose for detailed logging."
     )
     ap.add_argument("--region", help="AWS region (defaults to your configured region).")
     ap.add_argument(
         "--dry-run",
         action="store_true",
         help="If set, only list unattached volumes without deleting them.",
+    )
+    ap.add_argument(
+        "--verbose",
+        action="store_true",
+        help="If set, show detailed logging of all volumes (attached and unattached).",
     )
     ap.add_argument(
         "--output",
@@ -102,8 +121,46 @@ def main() -> int:
     ec2 = session.client("ec2", region_name=region)
     partition, account_id = get_identity(session)
 
-    # Get all unattached volumes
-    vols = describe_unattached_volumes(ec2)
+    # Get volume information
+    if args.verbose:
+        print(f"Scanning all EBS volumes in {region} (account {account_id})...")
+        all_volumes = describe_all_volumes(ec2)
+
+        # Analyze volume states
+        total_volumes = len(all_volumes)
+        unattached_volumes = [v for v in all_volumes if is_unattached(v)]
+        attached_volumes = [v for v in all_volumes if not is_unattached(v)]
+
+        print(f"Total EBS volumes found: {total_volumes}")
+        print(f"Unattached volumes: {len(unattached_volumes)}")
+        print(f"Attached volumes: {len(attached_volumes)}")
+
+        if attached_volumes:
+            print(f"\nAttached volumes:")
+            for v in attached_volumes:
+                vid = v["VolumeId"]
+                size = v.get("Size", 0)
+                vtype = v.get("VolumeType", "unknown")
+                state = v.get("State", "unknown")
+                az = v.get("AvailabilityZone", "unknown")
+                tags = {t["Key"]: t["Value"] for t in v.get("Tags", [])} if v.get("Tags") else {}
+                name = tags.get("Name", "")
+
+                attachment_info = ""
+                if v.get("Attachments"):
+                    att = v["Attachments"][0]
+                    instance_id = att.get("InstanceId", "unknown")
+                    attachment_info = f" (attached to {instance_id})"
+
+                print(f"  - {vid}: {size}GiB {vtype} in {az}, State={state}{attachment_info}")
+                if name:
+                    print(f"    Name: {name}")
+
+        print(f"\n" + "="*50)
+        vols = unattached_volumes
+    else:
+        # Get only unattached volumes
+        vols = describe_unattached_volumes(ec2)
 
     # Build result rows
     rows = []
@@ -133,7 +190,10 @@ def main() -> int:
         print(json.dumps(rows, indent=2))
     else:
         if not rows:
-            print(f"No unattached EBS volumes found in {region}.")
+            if args.verbose:
+                print(f"No unattached EBS volumes found in {region}.")
+            else:
+                print(f"No unattached EBS volumes found in {region}.")
         else:
             print(f"Unattached EBS volumes in {region} (account {account_id}):")
             for r in rows:
@@ -142,18 +202,29 @@ def main() -> int:
                     extra += f" Name={r['NameTag']!r}"
                 print(f"- {r['VolumeId']}  {r['Arn']}{extra}")
 
+        if args.verbose:
+            print(f"\nSummary: Found {len(rows)} unattached volume(s) ready for cleanup")
+
     # Deletion logic
     if args.dry_run:
         # Dry-run mode: only list, no deletion
         if rows:
             print(f"\n--dry-run mode: {len(rows)} volume(s) listed above (NOT deleted)")
+        elif args.verbose:
+            print(f"\n--dry-run mode: No unattached volumes to delete")
         return 0
     else:
         # No dry-run: proceed with deletion
         if not rows:
+            if args.verbose:
+                print(f"\nNo unattached volumes to delete")
             return 0
 
-        print(f"\n⚠️  DELETING {len(rows)} unattached volume(s)...")
+        if args.verbose:
+            print(f"\n⚠️  DELETING {len(rows)} unattached volume(s)...")
+            print("This action cannot be undone. Double-checking volumes before deletion...")
+        else:
+            print(f"\n⚠️  DELETING {len(rows)} unattached volume(s)...")
         ok_count = 0
         fail_count = 0
 
